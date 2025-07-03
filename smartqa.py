@@ -1,5 +1,6 @@
 import os
 import time
+import json
 from pathlib import Path
 from dotenv import load_dotenv
 import typer
@@ -63,6 +64,7 @@ class SmartQA:
         self.embed_model = os.getenv("EMBED_MODEL", "intfloat/multilingual-e5-base")
         self.llm_model = os.getenv("LLM_MODEL", "google/flan-t5-small")
         self.top_k = int(os.getenv("TOP_K", "3"))
+        self.log_file = Path(os.getenv("LOG_FILE", "qa_history.jsonl"))
         self.processor = DocumentProcessor(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
         self.embeddings = HuggingFaceEmbeddings(model_name=self.embed_model)
         self.llm = self._load_llm()
@@ -105,17 +107,38 @@ Answer (max 200 words):""",
     def ask_question(self, question: str) -> Dict[str, Any]:
         if not self.vectorstore:
             raise ValueError("No document indexed. Please load a document first.")
-        # Retrieve relevant chunks
+        start_time = time.time()
         docs = self.vectorstore.similarity_search(question, k=self.top_k)
         context = "\n\n".join([f"[Chunk {d.metadata['chunk_id']}]: {d.page_content}"
                               for d in docs])
-        # Generate answer
         qa_chain = self.qa_prompt | self.llm
         answer = qa_chain.invoke({"context": context, "question": question}).strip()
         citations = [d.metadata.get('chunk_id', 'unknown') for d in docs]
+        latency = time.time() - start_time
+        question_tokens = len(question.split())
+        answer_tokens = len(answer.split())
+        total_tokens = question_tokens + answer_tokens
+
+        record = {
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "question": question,
+            "answer": answer,
+            "citations": citations,
+            "latency": latency,
+            "token_usage": total_tokens,
+            "model": {
+                "embedding": self.embed_model,
+                "llm": self.llm_model
+            }
+        }
+        with open(self.log_file, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record) + "\n")
+
         return {
             "answer": answer,
-            "citations": citations
+            "citations": citations,
+            "latency": latency,
+            "token_usage": total_tokens
         }
 
 @app.command()
@@ -141,7 +164,7 @@ def ask(
     qa.index_document(file_path)
     result = qa.ask_question(question)
     console.print(f"[bold green]Answer:[/bold green] {result['answer']}\n")
-    console.print(f"[dim]Citations: chunks {', '.join(result['citations'])}[/dim]")
+    console.print(f"[dim]Citations: chunks {', '.join(result['citations'])} | Latency: {result['latency']:.2f}s | Tokens: {result['token_usage']}[/dim]")
 
 if __name__ == "__main__":
     app()
