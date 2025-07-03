@@ -5,21 +5,19 @@ import typer
 from rich.console import Console
 from typing import Optional, List
 
-# CLI setup
+# LangChain imports
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.schema import Document
+from langchain_community.vectorstores import FAISS
+from langchain_huggingface import HuggingFaceEmbeddings
+
 app = typer.Typer(help="Smart Document QA - Ask questions about your .txt documents")
 console = Console()
 
 def load_env():
     load_dotenv()
 
-
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.schema import Document
-
 class DocumentProcessor:
-    """
-    Handles document loading and chunking. You can change the chunk_size and overlap by CLI or .env.
-    """
     def __init__(self, chunk_size: int = None, chunk_overlap: int = None):
         if chunk_size is None:
             chunk_size = int(os.getenv("CHUNK_SIZE", "300"))
@@ -32,7 +30,6 @@ class DocumentProcessor:
         )
 
     def load_document(self, path: Path) -> str:
-        """Load text from file with error handling"""
         if not path.exists():
             raise FileNotFoundError(f"File not found: {path}")
         if not path.suffix.lower() == '.txt':
@@ -47,7 +44,6 @@ class DocumentProcessor:
             raise ValueError(f"Could not decode file as UTF-8: {path}")
 
     def chunk_document(self, text: str) -> List[Document]:
-        """Split document into chunks using chunk_size and chunk_overlap"""
         docs = self.splitter.create_documents([text])
         for i, doc in enumerate(docs):
             doc.metadata.update({
@@ -56,16 +52,28 @@ class DocumentProcessor:
             })
         return docs
 
-# --- Comando para probar chunking ---
+
+class SmartQA:
+    def __init__(self, chunk_size: int = None, chunk_overlap: int = None):
+        load_dotenv()
+        self.embed_model = os.getenv("EMBED_MODEL", "intfloat/multilingual-e5-base")
+        self.processor = DocumentProcessor(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+        self.embeddings = HuggingFaceEmbeddings(model_name=self.embed_model)
+        self.vectorstore = None
+
+    def index_document(self, file_path: Path) -> int:
+        text = self.processor.load_document(file_path)
+        docs = self.processor.chunk_document(text)
+        self.vectorstore = FAISS.from_documents(docs, self.embeddings)
+        console.print(f"[green]✓ Indexed {len(docs)} chunks from {file_path.name}[/green]")
+        return len(docs)
+
 @app.command()
 def chunk(
     input_path: str = typer.Option(..., "--input", "-i", help="Path to text file"),
     chunk_size: int = typer.Option(None, "--chunk-size", help="Chunk size for text splitting"),
     chunk_overlap: int = typer.Option(None, "--chunk-overlap", help="Chunk overlap for text splitting")
 ):
-    """
-    Test document loading and chunking with optional parameters.
-    """
     load_env()
     processor = DocumentProcessor(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
     file_path = Path(input_path)
@@ -76,9 +84,23 @@ def chunk(
         preview = chunk.page_content[:60].replace('\n', ' ')
         console.print(f"[cyan]Chunk {i}:[/cyan] {preview}...")
 
+
+@app.command()
+def index(
+    input_path: str = typer.Option(..., "--input", "-i", help="Path to text file"),
+    chunk_size: int = typer.Option(None, "--chunk-size", help="Chunk size for text splitting"),
+    chunk_overlap: int = typer.Option(None, "--chunk-overlap", help="Chunk overlap for text splitting")
+):
+    """
+    Index a document (chunks + embeddings) and report the number of chunks.
+    """
+    qa = SmartQA(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+    file_path = Path(input_path)
+    n_chunks = qa.index_document(file_path)
+    console.print(f"[green]Document indexed with {n_chunks} chunks.[/green]")
+
 @app.command()
 def main():
-    """Entry point CLI."""
     load_env()
     print("SmartQA bootstrap loaded.")
 
