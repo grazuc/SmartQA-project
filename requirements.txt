@@ -1,0 +1,9 @@
+typer
+python-dotenv
+rich
+pytest
+langchain>=0.2
+langchain-community
+langchain-huggingface
+transformers
+faiss-cpu

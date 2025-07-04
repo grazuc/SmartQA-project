@@ -44,6 +44,10 @@ class DocumentProcessor:
     """Handles document loading and chunking, you can change the chunk_size and overlap on the .env"""
     
     def __init__(self, chunk_size: int = None, chunk_overlap: int = None):
+        if chunk_size is None:
+            chunk_size = int(os.getenv("CHUNK_SIZE", 300))
+        if chunk_overlap is None:
+            chunk_overlap = int(os.getenv("CHUNK_OVERLAP", 40))
         self.splitter = RecursiveCharacterTextSplitter(
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,

@@ -1,0 +1,40 @@
+# Payment Gateway API v1.2
+
+## Overview
+This API allows merchants to process credit card payments, refunds, and to retrieve transaction status.
+
+## Authentication
+All requests must include an `Authorization` header with the API key.
+
+Example:
+Authorization: Bearer YOUR_API_KEY
+
+## Endpoints
+### POST /payments
+Create a new payment.
+
+- Request body must include:
+  - amount (integer)
+  - currency (string, e.g. USD)
+  - card_number (string)
+  - expiry_date (MM/YY)
+  - cvv (integer)
+
+Returns a transaction_id.
+
+### GET /payments/{transaction_id}
+Retrieve the status of a payment.
+
+### POST /refunds
+Initiate a refund for a given transaction_id.
+
+## Limits
+- Max amount per transaction: $10,000 USD
+- Max requests: 200 per minute
+
+## Errors
+- 401 Unauthorized: Missing or invalid API key.
+- 400 Bad Request: Validation error.
+
+## Contact
+support@payments.example.com
